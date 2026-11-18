@@ -25,7 +25,7 @@ volumes:
 
 services:
   pentagi:
-    image: vxcontrol/pentagi:2.2.0@sha256:64bd1802799142a12bc5eb23c15a1ccc50d3476736d3d2a98a9b773910283a1e
+    image: vxcontrol/pentagi@sha256:0abdf8e9e9e19839dccc5d2ec365060e5c41941588279897cabd628d29a9afd7  # 2.2.0-ce.hcffed94, rev cffed94, built 2026-10-22
     restart: unless-stopped
     hostname: pentagi
     ports:
