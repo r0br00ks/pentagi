@@ -1,0 +1,130 @@
+# PentAGI on the Dockerfarm through the VPS Coolify (project dev).
+# Derived from upstream docker-compose.yml at v2.2.0. Differences:
+#   - No host docker.sock. Sandboxes run in a private Docker daemon (dind
+#     service) reached over TLS, so PentAGI cannot see or touch other apps'
+#     containers on the host. Removing this app removes every sandbox.
+#   - pentagi runs as the image's own non-root user (upstream forces root only
+#     for the host socket).
+#   - UI is published on the Tailscale address only; the compose default is
+#     loopback, so a lost variable fails closed. Nothing else is published.
+#   - pgexporter dropped (it only feeds the observability stack, not deployed).
+#   - Provider config bind mounts dropped: Coolify cannot bind-mount repo files
+#     on a managed server, and MiniMax needs no config file.
+#   - Images pinned (pentagi 2.2.0, others by digest).
+# Record: Central-AI-Brain 02_Projects/Cybersecurity-Tools/PentAGI/
+
+volumes:
+  pentagi-data:
+  pentagi-ssl:
+  pentagi-postgres-data:
+  scraper-ssl:
+  dind-data:
+  dind-certs-ca:
+  dind-certs-client:
+
+services:
+  pentagi:
+    image: vxcontrol/pentagi:2.2.0@sha256:64bd1802799142a12bc5eb23c15a1ccc50d3476736d3d2a98a9b773910283a1e
+    restart: unless-stopped
+    hostname: pentagi
+    ports:
+      - "${PENTAGI_BIND_IP:-127.0.0.1}:${PENTAGI_HOST_PORT:-2923}:8443"
+    depends_on:
+      pgvector:
+        condition: service_healthy
+      dind:
+        condition: service_healthy
+    environment:
+      - DEBUG=false
+      - ASK_USER=false
+      - PUBLIC_URL=${PENTAGI_PUBLIC_URL:-https://localhost:8443}
+      - CORS_ORIGINS=${PENTAGI_PUBLIC_URL:-https://localhost:8443}
+      - COOKIE_SIGNING_SALT=${PENTAGI_COOKIE_SALT:?set PENTAGI_COOKIE_SALT}
+      - SERVER_PORT=8443
+      - SERVER_HOST=0.0.0.0
+      - SERVER_USE_SSL=true
+      # LLM: MiniMax, key from Bitwarden MINIMAX_API_KEY via Coolify env
+      - MINIMAX_API_KEY=${PENTAGI_MINIMAX_API_KEY:-}
+      - MINIMAX_SERVER_URL=https://api.minimax.io/v1
+      - EMBEDDING_PROVIDER=${PENTAGI_EMBEDDING_PROVIDER:-}
+      - EMBEDDING_URL=${PENTAGI_EMBEDDING_URL:-}
+      - EMBEDDING_KEY=${PENTAGI_EMBEDDING_KEY:-}
+      - EMBEDDING_MODEL=${PENTAGI_EMBEDDING_MODEL:-}
+      - DUCKDUCKGO_ENABLED=true
+      - SPLOITUS_ENABLED=true
+      - SCRAPER_PRIVATE_URL=https://pentagi:${PENTAGI_SCRAPER_PASSWORD:?set PENTAGI_SCRAPER_PASSWORD}@scraper/
+      - DATABASE_URL=postgres://pentagi:${PENTAGI_POSTGRES_PASSWORD:?set PENTAGI_POSTGRES_PASSWORD}@pgvector:5432/pentagidb?sslmode=disable
+      # Private Docker daemon for sandboxes
+      - DOCKER_HOST=tcp://dind:2376
+      - DOCKER_TLS_VERIFY=1
+      - DOCKER_CERT_PATH=/opt/pentagi/docker/ssl
+      - DOCKER_INSIDE=false
+      - DOCKER_NET_ADMIN=true
+      - DOCKER_PUBLIC_IP=0.0.0.0
+    volumes:
+      - pentagi-data:/opt/pentagi/data
+      - pentagi-ssl:/opt/pentagi/ssl
+      - dind-certs-client:/opt/pentagi/docker/ssl:ro
+    logging:
+      options:
+        max-size: 50m
+        max-file: "7"
+
+  dind:
+    image: docker:29.9.2-dind
+    restart: unless-stopped
+    hostname: dind
+    privileged: true
+    environment:
+      - DOCKER_TLS_CERTDIR=/certs
+    volumes:
+      - dind-data:/var/lib/docker
+      - dind-certs-ca:/certs/ca
+      - dind-certs-client:/certs/client
+    healthcheck:
+      test: ["CMD", "docker", "info"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    logging:
+      options:
+        max-size: 50m
+        max-file: "7"
+
+  pgvector:
+    image: vxcontrol/pgvector@sha256:09afd689127bdb42319a133b2ef7cd4318b7ebda58412644975d6eacd2367fb0
+    restart: unless-stopped
+    hostname: pgvector
+    environment:
+      POSTGRES_USER: pentagi
+      POSTGRES_PASSWORD: ${PENTAGI_POSTGRES_PASSWORD:?set PENTAGI_POSTGRES_PASSWORD}
+      POSTGRES_DB: pentagidb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pentagi"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    volumes:
+      - pentagi-postgres-data:/var/lib/postgresql/data
+    logging:
+      options:
+        max-size: 50m
+        max-file: "7"
+
+  scraper:
+    image: vxcontrol/scraper@sha256:4a3b0f179ab29003313167877ee2f6ab74c89f3fcb1ce108e648ca1ffadc51b7
+    restart: unless-stopped
+    hostname: scraper
+    environment:
+      - MAX_CONCURRENT_SESSIONS=4
+      - USERNAME=pentagi
+      - PASSWORD=${PENTAGI_SCRAPER_PASSWORD:?set PENTAGI_SCRAPER_PASSWORD}
+    volumes:
+      - scraper-ssl:/usr/src/app/ssl
+    shm_size: 2g
+    logging:
+      options:
+        max-size: 50m
+        max-file: "7"
