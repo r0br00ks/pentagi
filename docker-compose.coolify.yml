@@ -21,6 +21,7 @@ volumes:
   dind-data:
   dind-certs-ca:
   dind-certs-client:
+  ollama-models:
 
 services:
   pentagi:
@@ -46,10 +47,14 @@ services:
       # LLM: MiniMax, key from Bitwarden MINIMAX_API_KEY via Coolify env
       - MINIMAX_API_KEY=${PENTAGI_MINIMAX_API_KEY:-}
       - MINIMAX_SERVER_URL=https://api.minimax.io/v1
-      - EMBEDDING_PROVIDER=${PENTAGI_EMBEDDING_PROVIDER:-}
-      - EMBEDDING_URL=${PENTAGI_EMBEDDING_URL:-}
+      # Embeddings: local Ollama (no key, nothing leaves the host). MiniMax has
+      # no OpenAI-compatible embedding API, so it cannot be reused for this.
+      - EMBEDDING_PROVIDER=${PENTAGI_EMBEDDING_PROVIDER:-ollama}
+      - EMBEDDING_URL=${PENTAGI_EMBEDDING_URL:-http://ollama:11434}
       - EMBEDDING_KEY=${PENTAGI_EMBEDDING_KEY:-}
-      - EMBEDDING_MODEL=${PENTAGI_EMBEDDING_MODEL:-}
+      - EMBEDDING_MODEL=${PENTAGI_EMBEDDING_MODEL:-nomic-embed-text}
+      # Search: self-hosted SearXNG primary (no key); DuckDuckGo stays as fallback.
+      - SEARXNG_URL=${PENTAGI_SEARXNG_URL:-http://searxng:8080}
       - DUCKDUCKGO_ENABLED=true
       - SPLOITUS_ENABLED=true
       - SCRAPER_PRIVATE_URL=https://pentagi:${PENTAGI_SCRAPER_PASSWORD:?set PENTAGI_SCRAPER_PASSWORD}@scraper/
@@ -124,6 +129,74 @@ services:
     volumes:
       - scraper-ssl:/usr/src/app/ssl
     shm_size: 2g
+    logging:
+      options:
+        max-size: 50m
+        max-file: "7"
+
+  # Local embedding model for PentAGI's vector memory and knowledge search.
+  # CPU only, no API key, no data leaves the host. Model persists in a volume,
+  # so it is pulled once. pentagi has no hard dependency on it: if the pull is
+  # slow or fails, flows still run, embeddings just come online when it is ready.
+  ollama:
+    image: ollama/ollama:0.40.13
+    restart: unless-stopped
+    hostname: ollama
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        ollama serve &
+        until ollama list >/dev/null 2>&1; do sleep 1; done
+        ollama list | grep -q nomic-embed-text || ollama pull nomic-embed-text
+        wait
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list | grep -q nomic-embed-text || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 40
+      start_period: 20s
+    volumes:
+      - ollama-models:/root/.ollama
+    mem_limit: 2g
+    logging:
+      options:
+        max-size: 50m
+        max-file: "7"
+
+  # Self-hosted metasearch so web_search does not depend on DuckDuckGo's bot
+  # check (which returned HTTP 202 and left agents with no search). The image
+  # reads /etc/searxng/settings.yml; Coolify cannot mount a repo file on a
+  # managed server, so the settings are written at start with JSON output on
+  # (PentAGI requests format=json) and the rate limiter off.
+  searxng:
+    image: searxng/searxng:2026.11.2-cccbc9e15
+    restart: unless-stopped
+    hostname: searxng
+    environment:
+      - SEARXNG_SECRET=${PENTAGI_SEARXNG_SECRET:?set PENTAGI_SEARXNG_SECRET}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        mkdir -p /etc/searxng
+        cat > /etc/searxng/settings.yml <<EOF
+        use_default_settings: true
+        server:
+          secret_key: "$${SEARXNG_SECRET}"
+          limiter: false
+          image_proxy: false
+        search:
+          formats:
+            - html
+            - json
+        EOF
+        exec /usr/local/searxng/entrypoint.sh
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null 'http://127.0.0.1:8080/search?q=ping&format=json' || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 10s
+    mem_limit: 1g
     logging:
       options:
         max-size: 50m
