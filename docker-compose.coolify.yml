@@ -51,6 +51,11 @@ services:
       - DEEPSEEK_API_KEY=${PENTAGI_DEEPSEEK_API_KEY:-}
       # LLM: Windows Ollama (local, no key) as a selectable provider for its local models
       - OLLAMA_SERVER_URL=${PENTAGI_OLLAMA_SERVER_URL:-http://100.103.249.68:11434}
+      # LLM: Ollama Cloud via the generic OpenAI-compatible provider (hosted big models; key from Coolify env)
+      - LLM_SERVER_URL=${PENTAGI_LLM_SERVER_URL:-https://ollama.com/v1}
+      - LLM_SERVER_KEY=${PENTAGI_LLM_SERVER_KEY:-}
+      - LLM_SERVER_API_TYPE=${PENTAGI_LLM_SERVER_API_TYPE:-openai}
+      - LLM_SERVER_MODEL=${PENTAGI_LLM_SERVER_MODEL:-gpt-oss:120b}
       # Embeddings: local Ollama (no key, nothing leaves the host). MiniMax has
       # no OpenAI-compatible embedding API, so it cannot be reused for this.
       - EMBEDDING_PROVIDER=${PENTAGI_EMBEDDING_PROVIDER:-ollama}
