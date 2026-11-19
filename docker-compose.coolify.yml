@@ -64,6 +64,9 @@ services:
       - EMBEDDING_MODEL=${PENTAGI_EMBEDDING_MODEL:-nomic-embed-text}
       # Search: self-hosted SearXNG primary (no key); DuckDuckGo stays as fallback.
       - SEARXNG_URL=${PENTAGI_SEARXNG_URL:-http://searxng:8080}
+      - SEARXNG_LANGUAGE=${PENTAGI_SEARXNG_LANGUAGE:-auto}
+      - SEARXNG_SAFESEARCH=${PENTAGI_SEARXNG_SAFESEARCH:-0}
+      - SEARXNG_CATEGORIES=${PENTAGI_SEARXNG_CATEGORIES:-general}
       - DUCKDUCKGO_ENABLED=true
       - SPLOITUS_ENABLED=true
       - SCRAPER_PRIVATE_URL=https://pentagi:${PENTAGI_SCRAPER_PASSWORD:?set PENTAGI_SCRAPER_PASSWORD}@scraper/
