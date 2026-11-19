@@ -49,6 +49,8 @@ services:
       - MINIMAX_SERVER_URL=https://api.minimax.io/v1
       # LLM: DeepSeek, key from Bitwarden DEEPSEEK_API_KEY via Coolify env (added as a selectable second provider; MiniMax stays default)
       - DEEPSEEK_API_KEY=${PENTAGI_DEEPSEEK_API_KEY:-}
+      # LLM: Windows Ollama (local, no key) as a selectable provider for its local models
+      - OLLAMA_SERVER_URL=${PENTAGI_OLLAMA_SERVER_URL:-http://100.103.249.68:11434}
       # Embeddings: local Ollama (no key, nothing leaves the host). MiniMax has
       # no OpenAI-compatible embedding API, so it cannot be reused for this.
       - EMBEDDING_PROVIDER=${PENTAGI_EMBEDDING_PROVIDER:-ollama}
