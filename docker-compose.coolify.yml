@@ -62,6 +62,8 @@ services:
       - EMBEDDING_URL=${PENTAGI_EMBEDDING_URL:-http://ollama:11434}
       - EMBEDDING_KEY=${PENTAGI_EMBEDDING_KEY:-}
       - EMBEDDING_MODEL=${PENTAGI_EMBEDDING_MODEL:-nomic-embed-text}
+      # Cap embed input below nomic-embed-text's 2048-token limit (it is called with truncate=false); dense text over ~4KB overflows. 3072 bytes fits with margin.
+      - EMBEDDING_MAX_TEXT_BYTES=${PENTAGI_EMBEDDING_MAX_TEXT_BYTES:-3072}
       # Search: self-hosted SearXNG primary (no key); DuckDuckGo stays as fallback.
       - SEARXNG_URL=${PENTAGI_SEARXNG_URL:-http://searxng:8080}
       - SEARXNG_LANGUAGE=${PENTAGI_SEARXNG_LANGUAGE:-auto}
